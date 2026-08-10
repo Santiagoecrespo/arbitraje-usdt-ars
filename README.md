@@ -35,7 +35,7 @@ Edita `.env` si queres cambiar los supuestos. No hay secretos que configurar.
 | `IIBB_ENTRADA` | proporcion | 0.015 | IIBB previo a la compra. |
 | `IIBB_SALIDA` | proporcion | 0.000 | IIBB posterior a la venta. |
 | `MARGEN_MINIMO_PCT` | decimal | 0.3 | Margen neto minimo para marcar `VERDE`. |
-| `INTERVALO_SEG` | entero | 2 | Pausa entre consultas. |
+| `INTERVALO_SEG` | entero | 5 | Pausa entre consultas. |
 | `CSV_SALIDA` | ruta | `arbitraje_log.csv` | Archivo de resultados. |
 | `LOG_ERRORES` | ruta | `errores.log` | Archivo de errores en UTC. |
 
@@ -47,7 +47,7 @@ Las proporciones se expresan como fraccion: `0.0035` significa `0.35%`.
 py main.py
 ```
 
-El programa consulta `https://criptoya.com/api/usdt/ars/{volumen_usdt}` cada dos segundos. Calcula el volumen solicitado de forma dinamica y se detiene limpiamente con `Ctrl+C`.
+El programa consulta `https://criptoya.com/api/usdt/ars/{volumen_usdt}` cada cinco segundos. Calcula el volumen solicitado de forma dinamica y se detiene limpiamente con `Ctrl+C`.
 
 ## Tests
 

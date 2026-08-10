@@ -104,7 +104,7 @@ def cargar_configuracion() -> Config:
         iibb_entrada=_float_env("IIBB_ENTRADA", 0.015),
         iibb_salida=_float_env("IIBB_SALIDA", 0.0),
         margen_minimo_pct=_float_env("MARGEN_MINIMO_PCT", 0.3),
-        intervalo_seg=_int_env("INTERVALO_SEG", 2),
+        intervalo_seg=_int_env("INTERVALO_SEG", 5),
         csv_salida=os.getenv("CSV_SALIDA", "arbitraje_log.csv"),
         log_errores=os.getenv("LOG_ERRORES", "errores.log"),
     )
