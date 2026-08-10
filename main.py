@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import signal
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -22,10 +23,57 @@ RESUMEN_CADA = 10
 HISTORIAL_COMPLETO: deque[dict[str, object]] = deque(maxlen=2000)
 
 
-async def main() -> None:
+def _instalar_manejadores_detencion(evento_detencion: asyncio.Event) -> None:
+    """Solicita cierre ordenado ante Ctrl+C o SIGTERM de un proveedor cloud."""
+    loop = asyncio.get_running_loop()
+
+    def solicitar_detencion() -> None:
+        if not evento_detencion.is_set():
+            print("\nSenal de detencion recibida; cerrando el monitor...")
+            evento_detencion.set()
+
+    for senal in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(senal, solicitar_detencion)
+        except (NotImplementedError, RuntimeError):
+            # Windows no implementa add_signal_handler para todos los loops.
+            signal.signal(senal, lambda *_: loop.call_soon_threadsafe(solicitar_detencion))
+
+
+async def _obtener_hasta_detener(
+    session: aiohttp.ClientSession,
+    volumen_usdt: int,
+    evento_detencion: asyncio.Event,
+) -> dict:
+    """Cancela una consulta pendiente si el proceso recibe una senal de cierre."""
+    consulta = asyncio.create_task(obtener_cotizaciones(session, volumen_usdt))
+    espera_detencion = asyncio.create_task(evento_detencion.wait())
+    terminadas, pendientes = await asyncio.wait(
+        {consulta, espera_detencion},
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    for tarea in pendientes:
+        tarea.cancel()
+    await asyncio.gather(*pendientes, return_exceptions=True)
+    if espera_detencion in terminadas:
+        return {}
+    return consulta.result()
+
+
+async def _esperar_siguiente_ciclo(evento_detencion: asyncio.Event, segundos: int) -> None:
+    """Espera el intervalo configurado o termina de inmediato cuando recibe SIGTERM."""
+    try:
+        await asyncio.wait_for(evento_detencion.wait(), timeout=segundos)
+    except asyncio.TimeoutError:
+        pass
+
+
+async def main(evento_detencion: asyncio.Event | None = None) -> None:
     """Consulta precios publicos, calcula margenes y persiste el paper trading."""
     historial_margenes: deque[float] = deque(maxlen=VENTANA_PROMEDIO)
     tracker = PersistenceTracker(CONFIG)
+    evento_detencion = evento_detencion or asyncio.Event()
+    _instalar_manejadores_detencion(evento_detencion)
     ciclo = 0
 
     print("=" * 76)
@@ -44,19 +92,26 @@ async def main() -> None:
     print("=" * 76)
 
     try:
+        if evento_detencion.is_set():
+            return
         async with aiohttp.ClientSession() as session:
-            datos_iniciales = await obtener_cotizaciones(session, 1_000)
+            datos_iniciales = await _obtener_hasta_detener(session, 1_000, evento_detencion)
+            if evento_detencion.is_set():
+                return
             precio_ref = precio_referencia(datos_iniciales)
             print(f"Precio de referencia inicial: ${precio_ref:,.2f} ARS/USDT")
 
-            while True:
+            while not evento_detencion.is_set():
                 ciclo += 1
                 ahora_utc = datetime.now(timezone.utc)
                 timestamp_utc = ahora_utc.isoformat()
                 inicio = time.time()
                 volumen_usdt = max(50, int(CONFIG.capital_ars / precio_ref))
-                datos = await obtener_cotizaciones(session, volumen_usdt)
+                datos = await _obtener_hasta_detener(session, volumen_usdt, evento_detencion)
                 duracion_ms = int((time.time() - inicio) * 1000)
+
+                if evento_detencion.is_set():
+                    break
 
                 if not datos:
                     mediciones = tracker.actualizar_observaciones({}, ahora_utc)
@@ -66,7 +121,7 @@ async def main() -> None:
                     imprimir_reporte(
                         ciclo, timestamp_utc, [], 0, duracion_ms, promedio, CONFIG.margen_minimo_pct
                     )
-                    await asyncio.sleep(CONFIG.intervalo_seg)
+                    await _esperar_siguiente_ciclo(evento_detencion, CONFIG.intervalo_seg)
                     continue
 
                 precio_ref = precio_referencia(datos)
@@ -103,7 +158,7 @@ async def main() -> None:
                 if ciclo % RESUMEN_CADA == 0:
                     imprimir_resumen(HISTORIAL_COMPLETO, CONFIG.margen_minimo_pct)
                     imprimir_persistencia(tracker.estadisticas())
-                await asyncio.sleep(CONFIG.intervalo_seg)
+                await _esperar_siguiente_ciclo(evento_detencion, CONFIG.intervalo_seg)
     finally:
         print("\nMonitor detenido.")
         imprimir_resumen(HISTORIAL_COMPLETO, CONFIG.margen_minimo_pct)

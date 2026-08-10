@@ -54,6 +54,26 @@ py main.py
 
 El programa consulta `https://criptoya.com/api/usdt/ars/{volumen_usdt}` cada cinco segundos. Calcula el volumen solicitado de forma dinamica y se detiene limpiamente con `Ctrl+C`.
 
+## Deploy en Railway
+
+Desplegalo como un **worker persistente**, no como un Cron. Railway debe ejecutar continuamente el comando de inicio:
+
+```text
+python main.py
+```
+
+No requiere un dominio publico. Crea un Volume y montalo en `/data`; despues configura estas variables en Railway:
+
+```env
+CSV_SALIDA=/data/arbitraje_log.csv
+PERSISTENCIA_CSV=/data/persistencia_log.csv
+LOG_ERRORES=/data/errores.log
+```
+
+Las demas variables de `.env.example` son opcionales y solo hacen falta si queres cambiar los supuestos por defecto. El Volume conserva los CSV y logs entre redeploys. Las observaciones pendientes del tracker viven en RAM, por lo que se pierden si el servicio reinicia antes de completar sus demoras.
+
+El proceso maneja `SIGTERM` para terminar ordenadamente durante un redeploy y cerrar la sesion de red antes de mostrar el resumen final.
+
 ## Tests
 
 ```powershell
