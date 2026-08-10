@@ -1,0 +1,12 @@
+# Entorno y configuracion local
+.venv/
+.env
+
+# Resultados generados por el monitor
+arbitraje_log.csv
+errores.log
+
+# Cache de Python y tests
+__pycache__/
+*.py[cod]
+.pytest_cache/
