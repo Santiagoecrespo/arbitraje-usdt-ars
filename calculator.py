@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from math import isfinite
 from typing import Any
 
-from config import Config, EXCHANGES_OBJETIVO
+from config import CONFIG, Config, EXCHANGES_OBJETIVO
 
 
 def _numero_positivo(valor: object) -> float | None:
@@ -19,36 +19,70 @@ def _numero_positivo(valor: object) -> float | None:
 
 
 def calcular_margen(
-    precio_compra: float,
-    precio_venta: float,
-    cfg: Config,
+    precio_origen: float,
+    precio_destino: float,
+    cfg: Config | None = None,
+    *,
+    perfil: Mapping[str, Any] | None = None,
 ) -> dict[str, float | str] | None:
     """Calcula el resultado neto de una vuelta compra-transferencia-venta.
 
     No realiza IO ni modifica estado. Los costos se aplican en el orden en que
     ocurririan en la operacion simulada.
     """
-    compra = _numero_positivo(precio_compra)
-    venta = _numero_positivo(precio_venta)
-    if compra is None or venta is None or cfg.capital_ars <= 0:
+    configuracion = cfg or CONFIG
+    compra = _numero_positivo(precio_origen)
+    venta = _numero_positivo(precio_destino)
+    if compra is None or venta is None or configuracion.capital_ars <= 0:
         return None
 
-    pesos_reales = cfg.capital_ars * (1 - cfg.imp_cheque_debito - cfg.iibb_entrada)
+    # Sin ``perfil`` se conservan exactamente los supuestos y la formula legacy.
+    if perfil is None:
+        comision_origen = configuracion.comision_compra
+        comision_destino = configuracion.comision_venta
+        gas_fee = configuracion.gas_fee_usdt
+        imp_cheque_deb = configuracion.imp_cheque_debito
+        imp_cheque_cred = configuracion.imp_cheque_credito
+        iibb_entrada = configuracion.iibb_entrada
+        iibb_salida = configuracion.iibb_salida
+    else:
+        try:
+            comision_origen = float(perfil["comision_origen"])
+            comision_destino = float(perfil["comision_destino"])
+            gas_fee = float(perfil["gas_fee_usdt"])
+            imp_cheque_deb = float(perfil["imp_cheque_deb"])
+            imp_cheque_cred = float(perfil["imp_cheque_cred"])
+            iibb_entrada = float(perfil["iibb_entrada"])
+            iibb_salida = float(perfil["iibb_salida"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Perfil de costos incompleto o invalido") from exc
+        tasas = (
+            comision_origen,
+            comision_destino,
+            imp_cheque_deb,
+            imp_cheque_cred,
+            iibb_entrada,
+            iibb_salida,
+        )
+        if gas_fee < 0 or any(tasa < 0 or tasa >= 1 for tasa in tasas):
+            raise ValueError("Perfil de costos contiene valores fuera de rango")
+
+    pesos_reales = configuracion.capital_ars * (1 - imp_cheque_deb - iibb_entrada)
     usdt_brutos = pesos_reales / compra
-    usdt_post_comision = usdt_brutos * (1 - cfg.comision_compra)
-    usdt_transferidos = usdt_post_comision - cfg.gas_fee_usdt
+    usdt_post_comision = usdt_brutos * (1 - comision_origen)
+    usdt_transferidos = usdt_post_comision - gas_fee
     if usdt_transferidos <= 0:
         return None
 
-    usdt_a_vender = usdt_transferidos * (1 - cfg.comision_venta)
+    usdt_a_vender = usdt_transferidos * (1 - comision_destino)
     pesos_acreditados = usdt_a_vender * venta
-    pesos_netos = pesos_acreditados * (1 - cfg.imp_cheque_credito - cfg.iibb_salida)
-    ganancia_ars = pesos_netos - cfg.capital_ars
-    margen_neto_pct = ganancia_ars / cfg.capital_ars * 100
+    pesos_netos = pesos_acreditados * (1 - imp_cheque_cred - iibb_salida)
+    ganancia_ars = pesos_netos - configuracion.capital_ars
+    margen_neto_pct = ganancia_ars / configuracion.capital_ars * 100
     brecha_bruta_pct = (venta - compra) / compra * 100
     carga_fiscal_ars = (
-        cfg.capital_ars * (cfg.imp_cheque_debito + cfg.iibb_entrada)
-        + pesos_acreditados * (cfg.imp_cheque_credito + cfg.iibb_salida)
+        configuracion.capital_ars * (imp_cheque_deb + iibb_entrada)
+        + pesos_acreditados * (imp_cheque_cred + iibb_salida)
     )
 
     return {
@@ -63,8 +97,8 @@ def calcular_margen(
         "margen_neto_pct": margen_neto_pct,
         "brecha_bruta_pct": brecha_bruta_pct,
         "carga_fiscal_ars": carga_fiscal_ars,
-        "gas_fee_usdt": cfg.gas_fee_usdt,
-        "red": cfg.red_usada,
+        "gas_fee_usdt": gas_fee,
+        "red": configuracion.red_usada,
     }
 
 

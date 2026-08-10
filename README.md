@@ -36,7 +36,12 @@ Edita `.env` si queres cambiar los supuestos. No hay secretos que configurar.
 | `IIBB_SALIDA` | proporcion | 0.000 | IIBB posterior a la venta. |
 | `MARGEN_MINIMO_PCT` | decimal | 0.3 | Margen neto minimo para marcar `VERDE`. |
 | `INTERVALO_SEG` | entero | 5 | Pausa entre consultas. |
+| `VERSION_SUPUESTOS` | texto | `2026.1-persistencia` | Identificador de los supuestos usados por el tracker. |
+| `DEMORAS_MINUTOS` | lista | `1,3,5,10,15,30` | Minutos a medir desde cada observacion inicial. Debe estar ordenada y sin repetidos. |
+| `BRECHA_MINIMA_REGISTRO_PCT` | decimal | 0.5 | Brecha minima para abrir una observacion temporal. |
+| `HISTORIAL_PERSISTENCIA_MAX` | entero | 2000 | Maximo de mediciones de persistencia mantenidas en RAM. |
 | `CSV_SALIDA` | ruta | `arbitraje_log.csv` | Archivo de resultados. |
+| `PERSISTENCIA_CSV` | ruta | `persistencia_log.csv` | Archivo exclusivo de mediciones temporales. |
 | `LOG_ERRORES` | ruta | `errores.log` | Archivo de errores en UTC. |
 
 Las proporciones se expresan como fraccion: `0.0035` significa `0.35%`.
@@ -85,6 +90,14 @@ Ejemplo ilustrativo con los defaults, compra a $1.300 y venta a $1.400 por USDT:
 | `brecha_bruta_pct` | Diferencia de precio antes de costos. |
 | `margen_neto_pct` / `ganancia_ars` | Resultado despues de comisiones, gas e impuestos configurados. |
 | `carga_fiscal_ars` | Estimacion de impuestos incluidos en el modelo. |
+
+## Persistencia de cotizaciones
+
+El tracker es una capa adicional: no modifica `arbitraje_log.csv` ni el calculo legado. Cuando una diferencia bruta supera `BRECHA_MINIMA_REGISTRO_PCT`, registra el precio de origen y destino en T0. En cada demora configurada vuelve a observar el precio de destino y recalcula los margenes para tres perfiles: teorico (sin fricciones), estimado (comisiones y red) y conservador (comisiones, red e impuestos).
+
+Cada medicion se agrega inmediatamente a `persistencia_log.csv` con timestamps UTC, demora real, deterioro, estado de dato ausente y persistencia independiente por perfil. La persistencia describe si una cotizacion publicada sigue cumpliendo el umbral temporal; no confirma liquidez, disponibilidad de red, volumen ni ejecutabilidad.
+
+Las observaciones pendientes viven en memoria RAM. Si el proceso se detiene con `Ctrl+C` antes de completar sus demoras, esas observaciones pendientes se descartan; las mediciones ya escritas en `persistencia_log.csv` se conservan.
 
 ## Como interpretar resultados
 

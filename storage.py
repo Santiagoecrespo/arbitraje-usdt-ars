@@ -26,6 +26,39 @@ CSV_FIELDS = (
     "gas_fee_usdt",
 )
 
+PERSISTENCIA_FIELDS = (
+    "id_observacion",
+    "version_supuestos",
+    "timestamp_t0_utc",
+    "timestamp_medicion_utc",
+    "ex_origen",
+    "ex_destino",
+    "precio_origen_t0",
+    "precio_destino_t0",
+    "brecha_bruta_t0_pct",
+    "margen_teorico_t0_pct",
+    "margen_estimado_t0_pct",
+    "margen_conservador_t0_pct",
+    "demora_minutos",
+    "demora_real_segundos",
+    "precio_destino_post",
+    "brecha_post_pct",
+    "deterioro_pct",
+    "margen_teorico_post_pct",
+    "margen_estimado_post_pct",
+    "margen_conservador_post_pct",
+    "persiste_teorico",
+    "persiste_estimado",
+    "persiste_conservador",
+    "sin_dato",
+    "no_evaluable_teorico",
+    "no_evaluable_estimado",
+    "no_evaluable_conservador",
+    "motivo_no_evaluable_teorico",
+    "motivo_no_evaluable_estimado",
+    "motivo_no_evaluable_conservador",
+)
+
 
 def loguear_error(mensaje: str, log_file: str) -> None:
     """Agrega un error con timestamp UTC; no deja caer el loop si falla el log."""
@@ -66,3 +99,26 @@ def guardar_ciclo(
         loguear_error("CSV abierto o bloqueado; se omite este ciclo", cfg.log_errores)
     except OSError as exc:
         loguear_error(f"No se pudo escribir el CSV: {exc}", cfg.log_errores)
+
+
+def guardar_persistencia(mediciones: Sequence[dict[str, Any]], cfg: Config) -> None:
+    """Agrega inmediatamente mediciones temporales al CSV exclusivo del tracker."""
+    if not mediciones:
+        return
+    ruta = Path(cfg.persistencia_csv)
+    existe = ruta.is_file()
+    try:
+        with ruta.open("a", newline="", encoding="utf-8") as archivo:
+            writer = csv.DictWriter(archivo, fieldnames=PERSISTENCIA_FIELDS, extrasaction="ignore")
+            if not existe:
+                writer.writeheader()
+            for medicion in mediciones:
+                fila = {
+                    clave: valor.isoformat() if isinstance(valor, datetime) else valor
+                    for clave, valor in medicion.items()
+                }
+                writer.writerow(fila)
+    except PermissionError:
+        loguear_error("CSV de persistencia abierto o bloqueado; se omite esta medicion", cfg.log_errores)
+    except OSError as exc:
+        loguear_error(f"No se pudo escribir el CSV de persistencia: {exc}", cfg.log_errores)

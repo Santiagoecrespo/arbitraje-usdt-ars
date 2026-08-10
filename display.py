@@ -69,3 +69,41 @@ def imprimir_resumen(historial: Sequence[dict[str, Any]], margen_minimo_pct: flo
     print(f"Ciclos VERDE: {len(verdes)}/{len(margenes)} ({len(verdes) / len(margenes) * 100:.1f}%)")
     print(f"Mejor par: {str(mejor['ex_compra']).upper()} -> {str(mejor['ex_venta']).upper()} ({float(mejor['margen_neto_pct']):.3f}%)")
     print("#" * 76)
+
+
+def imprimir_persistencia(estadisticas: dict[str, Any]) -> None:
+    """Presenta la persistencia temporal de diferencias de cotizaciones."""
+    print(f"\n{'-' * 76}")
+    print("PERSISTENCIA DE COTIZACIONES")
+    print(
+        f"Observaciones evaluadas: {estadisticas['total_observaciones']} | "
+        f"Sin dato: {estadisticas['total_sin_dato']} | "
+        f"Abiertas: {estadisticas['observaciones_abiertas']}"
+    )
+    print(f"{'Demora':<12} {'Teorico':>12} {'Estimado':>12} {'Conservador':>14}")
+    for demora, perfiles in estadisticas["por_demora"].items():
+        def porcentaje(nombre: str) -> str:
+            valor = perfiles[nombre]["pct_persistencia"]
+            return "-" if valor is None else f"{float(valor):.0f}%"
+
+        print(
+            f"{str(demora) + ' min':<12} {porcentaje('teorico'):>12} "
+            f"{porcentaje('estimado'):>12} {porcentaje('conservador'):>14}"
+        )
+
+    deterioros = estadisticas["deterioro_promedio_por_demora"]
+    demora_referencia = 5 if 5 in deterioros else next(iter(deterioros), None)
+    if demora_referencia is not None and deterioros[demora_referencia] is not None:
+        print(
+            f"Deterioro promedio a {demora_referencia} min: "
+            f"{float(deterioros[demora_referencia]):.2f}%"
+        )
+    mejor_par = estadisticas["par_mayor_persistencia"]
+    if mejor_par is not None:
+        print(
+            "Par con mayor persistencia: "
+            f"{str(mejor_par['ex_origen']).upper()} -> {str(mejor_par['ex_destino']).upper()} "
+            f"({float(mejor_par['pct_persistencia']):.0f}% a {mejor_par['demora_minutos']} min, "
+            f"perfil {mejor_par['perfil']})"
+        )
+    print("-" * 76)

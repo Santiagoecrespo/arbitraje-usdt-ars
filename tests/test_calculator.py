@@ -91,3 +91,33 @@ def test_analizar_matriz_ordenado_por_margen(cfg):
     resultados = analizar_matriz(datos, cfg)
     margenes = [op["margen_neto_pct"] for op in resultados]
     assert margenes == sorted(margenes, reverse=True)
+
+
+def test_calculo_legacy_regresion(cfg):
+    """La llamada historica de tres argumentos conserva su resultado exacto."""
+    resultado = calcular_margen(1_300, 1_400, cfg)
+    assert resultado is not None
+    esperados = {
+        "pesos_reales": 979000.0,
+        "usdt_brutos": 753.0769230769231,
+        "usdt_post_comision": 750.441153846154,
+        "usdt_transferidos": 750.141153846154,
+        "usdt_a_vender": 747.5156598076925,
+        "pesos_acreditados": 1046521.9237307694,
+        "pesos_netos": 1040242.7921883848,
+        "ganancia_ars": 40242.7921883848,
+        "margen_neto_pct": 4.02427921883848,
+        "brecha_bruta_pct": 7.6923076923076925,
+        "carga_fiscal_ars": 27279.131542384614,
+        "gas_fee_usdt": 0.3,
+    }
+    for clave, esperado in esperados.items():
+        assert resultado[clave] == pytest.approx(esperado)
+    assert resultado["red"] == "polygon"
+
+
+def test_perfil_keyword_only_aplica_costos_sin_alterar_legacy(cfg):
+    legacy = calcular_margen(1_300, 1_400, cfg)
+    teorico = calcular_margen(1_300, 1_400, cfg, perfil=cfg.perfiles["teorico"])
+    assert legacy is not None and teorico is not None
+    assert teorico["margen_neto_pct"] > legacy["margen_neto_pct"]

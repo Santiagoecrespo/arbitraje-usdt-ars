@@ -4,6 +4,7 @@
 
 # Resultados generados por el monitor
 arbitraje_log.csv
+persistencia_log.csv
 errores.log
 
 # Cache de Python y tests
